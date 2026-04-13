@@ -4,6 +4,9 @@ using HotelBooking.UnitTests.Fakes;
 using Xunit;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using Moq;
+
 
 
 namespace HotelBooking.UnitTests
@@ -80,10 +83,11 @@ namespace HotelBooking.UnitTests
             await Assert.ThrowsAsync<ArgumentException>(result);
         }
 
+        //Test for valid future dates
         [Theory]
         [InlineData(1, 5)]
         [InlineData(2, 4)]
-        [InlineData(3, 3)]
+        [InlineData(3, 3)] //Single day booking
         public async Task FindAvailableRoom_ValidFutureDates_ReturnsRoomId(int startOffset, int endOffset)
         {
             // Arrange
@@ -116,7 +120,7 @@ namespace HotelBooking.UnitTests
             Assert.True(booking.IsActive);
         }
 
-
+        //Test for invalid date range in CreateBooking (start date after end date)
         [Fact]
         public async Task GetFullyOccupiedDates_StartAfterEnd_ThrowsArgumentException()
         {
@@ -131,5 +135,36 @@ namespace HotelBooking.UnitTests
             await Assert.ThrowsAsync<ArgumentException>(result);
         }
 
+
+        //Mocking test to verify that method itself, AddAsync is called when creating booking - ensure the booking saved to repository
+        [Fact]
+        public async Task CreateBooking_WithMoq_CallsAddAsync()
+        {
+            // Arrange
+            var mockBookingRepo = new Mock<IRepository<Booking>>();
+            var mockRoomRepo = new Mock<IRepository<Room>>();
+
+            // Only 1 room exists to verify booking creation without conflicts
+            mockRoomRepo.Setup(r => r.GetAllAsync())
+                        .ReturnsAsync(new List<Room> { new Room { Id = 1 } });
+
+            // No existing bookings to ensure room is available
+            mockBookingRepo.Setup(b => b.GetAllAsync())
+                           .ReturnsAsync(new List<Booking>());
+
+            var manager = new BookingManager(mockBookingRepo.Object, mockRoomRepo.Object);
+
+            var booking = new Booking
+            {
+                StartDate = DateTime.Today.AddDays(1),
+                EndDate = DateTime.Today.AddDays(2)
+            };
+
+            // Act
+            await manager.CreateBooking(booking);
+
+            // Assert: verify AddAsync is called once
+            mockBookingRepo.Verify(b => b.AddAsync(It.IsAny<Booking>()), Times.Once);
+        }
     }
 }
